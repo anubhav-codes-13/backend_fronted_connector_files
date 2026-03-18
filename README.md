@@ -374,5 +374,4 @@ The pipeline will:
 1. Load `case_level_data.csv`
 2. Auto-detect the max date as the reference anchor
 3. Compute all metrics and write 12 JSON files to `output/`
-#   b a c k e n d _ f r o n t e d _ c o n n e c t o r _ f i l e s  
- 
+
