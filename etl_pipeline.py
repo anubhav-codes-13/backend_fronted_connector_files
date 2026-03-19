@@ -78,7 +78,7 @@ def calculate_kpis(current_df: pd.DataFrame, previous_df: pd.DataFrame) -> dict:
 
     def _trend(current_val, previous_val) -> float | None:
         if previous_val is None or previous_val == 0:
-            return None
+            return 0.0 if current_val > 0 else 0.0
         return round((current_val - previous_val) / previous_val * 100, 1)
 
     curr = _compute(current_df)
@@ -127,15 +127,17 @@ def generate_chart_data(current_df: pd.DataFrame, previous_df: pd.DataFrame, tim
             "escalation": grp["Escalation"].mean() * 100,
         }).reset_index()
 
-        trends = [
-            {
+        trends = []
+        for _, row in trends_df.iterrows():
+            res = row["resolution"]
+            esc = row["escalation"]
+            
+            trends.append({
                 "date":       row["date"].strftime(fmt),
                 "volume":     int(row["volume"]),
-                "resolution": round(row["resolution"], 1),
-                "escalation": round(row["escalation"], 1),
-            }
-            for _, row in trends_df.iterrows()
-        ]
+                "resolution": round(res, 1) if not pd.isna(res) else 0.0,
+                "escalation": round(esc, 1) if not pd.isna(esc) else 0.0,
+            })
 
     # ------------------------------------------------------------------
     # Part 2: Issue Clusters — all issues grouped by L1, sorted descending
@@ -166,7 +168,7 @@ def generate_chart_data(current_df: pd.DataFrame, previous_df: pd.DataFrame, tim
             curr_vol   = len(curr_slice)
             prev_vol   = int(prev_l1_counts.get(l1, 0))
 
-            chg = None if prev_vol == 0 else round((curr_vol - prev_vol) / prev_vol * 100, 1)
+            chg = 100.0 if prev_vol == 0 else round((curr_vol - prev_vol) / prev_vol * 100, 1)
 
             trend_data = [
                 int(v) for v in curr_slice.set_index("date").resample(spark_freq).size().values
@@ -213,12 +215,12 @@ def get_top_trending_topics(current_df: pd.DataFrame, previous_df: pd.DataFrame,
         prev_vol = int(prev_counts.get(topic, 0))
 
         if prev_vol == 0:
-            continue                             # skip — no baseline to compare against
+            trend_pct = 100.0                    # Treat as 100% growth for new topics
+        else:
+            trend_pct = round((curr_vol - prev_vol) / prev_vol * 100, 1)
 
-        trend_pct = round((curr_vol - prev_vol) / prev_vol * 100, 1)
-
-        if trend_pct <= 0:
-            continue                             # only positive growth qualifies
+        if trend_pct <= 0 and prev_vol > 0:
+            continue                             # only positive growth qualifies if baseline exists
 
         trending.append((topic, int(curr_vol), trend_pct))
 
@@ -237,7 +239,7 @@ def get_top_trending_topics(current_df: pd.DataFrame, previous_df: pd.DataFrame,
             "trend_data": trend_data,
         })
 
-    return result
+    return result[:10]
 
 
 def get_performing_topics(current_df: pd.DataFrame, time_window_days: int) -> list:
@@ -455,7 +457,7 @@ def build_dashboard_payloads(df: pd.DataFrame, output_dir: str = "output",
 
     for time_window in TIME_WINDOWS:
         time_label  = "24h" if time_window == 1 else f"{time_window}d"
-        file_prefix = f"{time_window}d"
+        file_prefix = time_label
         start_date  = reference_date - timedelta(days=time_window)
 
         for channel in CHANNELS:
